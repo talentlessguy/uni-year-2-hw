@@ -1,4 +1,5 @@
-const res = await fetch('/regions.json')
+const url = document.getElementById('url').textContent
+const res = await fetch(url)
 const stops = await res.json()
 
 const input = document.getElementById('input')
@@ -28,6 +29,22 @@ input.addEventListener('input', () => {
   } else {
     results.classList.add('hidden')
   }
+})
+
+input.addEventListener('click', () => {
+  console.log('trigger')
+  stops.forEach((suggestion) => {
+    const div = document.createElement('div')
+    div.textContent = suggestion
+    div.classList.add('px-3', 'py-2', 'cursor-pointer', 'hover:bg-gray-100')
+    div.addEventListener('click', () => {
+      input.value = suggestion
+      results.innerHTML = ''
+      results.classList.add('hidden')
+    })
+    results.appendChild(div)
+    results.classList.toggle('hidden', false)
+  })
 })
 
 document.addEventListener('click', (event) => {
