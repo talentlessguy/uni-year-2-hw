@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Document</title>
+      <link rel="stylesheet" href="out.css">
+   </head>
+   <body>
+      <div class="border text-card-foreground max-w-md mx-auto mt-10 p-4 bg-white shadow-md rounded-md" data-v0-t="card">
+        <h1 class="text-xl font-semibold">Select a Region and City in Estonia</h1>
+        <form class="p-6" action="search" method="get">
+            <div class="w-full mb-4">
+                <label class="text-sm font-medium leading-none" for="region-select">Region</label>
+                <select class="w-full h-10 border border-gray-300 rounded-md px-3" id="region-select" name="region">
+                    <option disabled="">Select a region...</option>
+                    <option>Harju County</option>
+                    <option>Tartu County</option>
+                    <option>Ida-Viru County</option>
+                    <option>Pärnu County</option>
+                    <option>Lääne County</option>
+                    <option>Rapla County</option>
+                    <option>Võru County</option>
+                    <option>Jõgeva County</option>
+                    <option>Viljandi County</option>
+                </select>
+            </div>
+            <div class="w-full">
+                <label class="text-sm font-medium leading-none" for="city-input">City</label>
+                <input class="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm w-full" id="city-input" placeholder="Enter a city..." name="city">
+            </div>
+            <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4 w-full" type="submit">
+                Search
+              </button>
+              
+        </form>
+      </div>
+   </body>
+</html>
