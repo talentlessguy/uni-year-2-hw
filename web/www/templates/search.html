@@ -10,9 +10,9 @@
    <body>
       <div class="border text-card-foreground max-w-md mx-auto mt-10 p-4 bg-white shadow-md rounded-md" data-v0-t="card">
         <h1 class="text-xl font-semibold">{{.Title}}</h1>
-        <form class="p-6" action="search" method="get">
+        <form class="p-6" action="{{.Action}}" method="get">
             <div class="relative w-64">
-                <input id="input" type="text" placeholder="Type to search..." name="region"
+                <input id="input" type="text" placeholder="Type to search..." name="value"
                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:border-blue-300">
                 <div id="results" class="absolute w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg hidden"></div>
             </div>
