@@ -1,4 +1,4 @@
-const url = document.getElementById('url').textContent
+const url = document.querySelector('meta[name="current-url"]').content
 const res = await fetch(url)
 const stops = await res.json()
 

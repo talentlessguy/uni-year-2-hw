@@ -3,11 +3,11 @@
    <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="current-url" content="{{.URL}}">
       <title>Document</title>
       <link rel="stylesheet" href="out.css">
    </head>
    <body>
-      <div id="url" style="display: none;">{{.URL}}</div>
       <div class="border text-card-foreground max-w-md mx-auto mt-10 p-4 bg-white shadow-md rounded-md" data-v0-t="card">
         <h1 class="text-xl font-semibold">{{.Title}}</h1>
         <form class="p-6" action="search" method="get">
