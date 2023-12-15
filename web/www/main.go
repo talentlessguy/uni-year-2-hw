@@ -7,6 +7,8 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -18,12 +20,11 @@ type Template struct {
 }
 
 type Trip struct {
-	TripID        string `json:"trip_id"`
-	TripHeadsign  string `json:"trip_headsign"`
-	TripLongName  string `json:"trip_long_name"`
-	RouteID       string `json:"route_id"`
-	ArrivalTime   string `json:"arrival_time"`
-	DepartureTime string `json:"departure_time"`
+	RouteShortName string `json:"route_short_name"`
+	TripID         string `json:"trip_id"`
+	TripLongName   string `json:"trip_long_name"`
+	ArrivalTime    string `json:"arrival_time"`
+	DepartureTime  string `json:"departure_time"`
 }
 
 func main() {
@@ -47,21 +48,33 @@ func main() {
 			data := Template{
 				URL:    "/regions.json",
 				Title:  "Select a Region and City in Estonia",
-				Action: "search",
+				Action: "stops",
 			}
 			err = tmpl.Execute(w, data)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		} else {
-			fs := http.FileServer(http.Dir("public"))
-			fs.ServeHTTP(w, r)
+			baseDir := "public"
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			fullPath := filepath.Join(baseDir, path)
+
+			if !strings.Contains(path, ".") {
+				htmlPath := fullPath + ".html"
+				_, err := os.Stat(htmlPath)
+				if err == nil {
+					http.ServeFile(w, r, htmlPath)
+					return
+				}
+			}
+
+			http.ServeFile(w, r, fullPath)
 		}
 	})
 
 	http.HandleFunc("/api/stops", func(w http.ResponseWriter, r *http.Request) {
 		region := r.URL.Query().Get("region")
-		rows, err := db.Query("SELECT stop_name FROM stops WHERE stop_area = $1", region)
+		rows, err := db.Query("SELECT DISTINCT ON (stop_name) stop_name FROM stops WHERE stop_area = $1", region)
 		if err != nil {
 			fmt.Println("Error querying stops:", err)
 			return
@@ -79,17 +92,8 @@ func main() {
 				fmt.Println("Error scanning stops:", err)
 				return
 			}
-			// Append only unique stop names
-			unique := true
-			for _, s := range stops {
-				if s == stop {
-					unique = false
-					break
-				}
-			}
-			if unique {
-				stops = append(stops, stop)
-			}
+
+			stops = append(stops, stop)
 		}
 		jsonData, err := json.Marshal(stops)
 		if err != nil {
@@ -104,8 +108,7 @@ func main() {
 	http.HandleFunc("/api/buses", func(w http.ResponseWriter, r *http.Request) {
 		stop := r.URL.Query().Get("stop")
 
-		rows, err := db.Query("SELECT t.trip_id, t.trip_headsign, t.trip_long_name, t.route_id, st.arrival_time, st.departure_time FROM stops s JOIN stop_times st ON s.stop_id = st.stop_id JOIN trips t ON st.trip_id = t.trip_id WHERE s.stop_name = $1", stop)
-
+		rows, err := db.Query("SELECT DISTINCT ON (r.route_short_name) r.route_short_name, t.trip_id, t.trip_long_name, st.arrival_time, st.departure_time FROM stops s JOIN stop_times st ON s.stop_id = st.stop_id JOIN trips t ON st.trip_id = t.trip_id JOIN routes r ON t.route_id = r.route_id WHERE s.stop_name = $1 ORDER BY r.route_short_name, st.arrival_time", stop)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error querying buses: %v", err), http.StatusInternalServerError)
 			return
@@ -116,7 +119,7 @@ func main() {
 
 		for rows.Next() {
 			var trip Trip
-			err := rows.Scan(&trip.TripID, &trip.TripHeadsign, &trip.TripLongName, &trip.RouteID, &trip.ArrivalTime, &trip.DepartureTime)
+			err := rows.Scan(&trip.RouteShortName, &trip.TripID, &trip.TripLongName, &trip.ArrivalTime, &trip.DepartureTime)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error scanning row: %v", err), http.StatusInternalServerError)
 				return
@@ -134,13 +137,13 @@ func main() {
 			http.Error(w, fmt.Sprintf("Error marshaling JSON: %v", err), http.StatusInternalServerError)
 			return
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(jsonResponse)
+
 	})
 
-	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/stops", func(w http.ResponseWriter, r *http.Request) {
 		region := r.URL.Query().Get("value")
 
 		tmpl, err := template.ParseFiles("templates/search.html")
@@ -153,26 +156,6 @@ func main() {
 			URL:    fmt.Sprintf("/api/stops?region=%s", region),
 			Title:  "Select a stop",
 			Action: "buses",
-		}
-		err = tmpl.Execute(w, data)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-
-	http.HandleFunc("/buses", func(w http.ResponseWriter, r *http.Request) {
-		stop := r.URL.Query().Get("value")
-
-		tmpl, err := template.ParseFiles("templates/search.html")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		data := Template{
-			URL:    fmt.Sprintf("/api/buses?stop=%s", stop),
-			Title:  "Select a bus",
-			Action: "idk",
 		}
 		err = tmpl.Execute(w, data)
 		if err != nil {

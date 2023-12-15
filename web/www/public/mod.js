@@ -52,12 +52,3 @@ document.addEventListener('click', (event) => {
     results.classList.add('hidden')
   }
 })
-
-// for (stop of stops) {
-//     const option = document.createElement('option')
-//     option.innerText = stop
-//     option.value = stop
-//     select.appendChild(option)
-// }
-
-// console.log(select.childNodes)
