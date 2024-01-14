@@ -1,6 +1,10 @@
 const urlParams = new URLSearchParams(location.search)
 
-const res = await fetch(`/api/buses?stop=${urlParams.get('value')}&mode=text`)
+const res = await fetch(
+  `/api/buses?stop_name=${urlParams.get('name')}&stop_area=${
+    urlParams.get('region')
+  }`,
+)
 
 const json = await res.json()
 
@@ -19,7 +23,7 @@ navigator.geolocation.getCurrentPosition((pos) => {
 
 for (const bus of json) {
   const btn = document.createElement('button')
-  btn.textContent = `${bus.route_short_name} (${bus.trip_long_name})`
+  btn.textContent = `${bus.route_short_name} (${bus.route_long_name})`
   btn.classList.add(
     'bg-green-500',
     'hover:bg-green-700',
@@ -32,14 +36,22 @@ for (const bus of json) {
   )
 
   btn.onclick = () => {
-    fetch(
-      `/api/arrivals?user_lat=${coords.latitude}&user_lon=${coords.longitude}&route_id=${bus.route_id}`,
-    )
-      .then((res) => res.json()).then((json) => {
-        console.log(`Closest stop: `, json)
+    if (coords.latitude) {
+      fetch(
+        `/api/nearest_stop?user_lat=${coords.latitude}&user_lon=${coords.longitude}&route_id=${bus.route_id}`,
+      )
+        .then((res) => res.json()).then((json) => {
+          console.log(`Closest stop: `, json)
 
-        console.log(bus)
-      })
+          console.log(`Bus: `, bus)
+
+          // fetch(`/api/schedule?trip_id=${bus.trip_id}&stop_id=${json.id}`).then((
+          //   res,
+          // ) => res.json()).then((json) => {
+          //   console.log(json)
+          // })
+        })
+    }
   }
 
   grid.appendChild(btn)

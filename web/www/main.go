@@ -21,50 +21,48 @@ type Template struct {
 	Action string
 }
 
-type Trip struct {
+type Route struct {
 	RouteID        string `json:"route_id"`
 	RouteShortName string `json:"route_short_name"`
-	TripID         string `json:"trip_id"`
-	TripLongName   string `json:"trip_long_name"`
-	ArrivalTime    string `json:"arrival_time"`
-	DepartureTime  string `json:"departure_time"`
-	Lat            string `json:"stop_lat"`
-	Lon            string `json:"stop_lon"`
+	RouteLongName  string `json:"route_long_name"`
 }
 
 type Stop struct {
-	Name string  `json:"name"`
-	ID   string  `json:"id"`
-	Lat  float64 `json:"lat"`
-	Lon  float64 `json:"lon"`
+	Name string `json:"name"`
+	Area string `json:"area"`
+	ID   string `json:"id"`
+}
+
+type StopWithDistance struct {
+	Stop
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
+	TripID string  `json:"trip_id"`
+}
+
+type StopTime struct {
+	ArrivalTime string `json:"arrival_time"`
+	TripID      string `json:"trip_id"`
+	StopID      string `json:"stop_id"`
 }
 
 func haversine(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 6371 // Radius of the Earth in km
-	dLat := (lat2 - lat1) * math.Pi / 180.0
-	dLon := (lon2 - lon1) * math.Pi / 180.0
+	const earthRadius = 6371 // in kilometers
 
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(lat1*math.Pi/180.0)*math.Cos(lat2*math.Pi/180.0)*
-			math.Sin(dLon/2)*math.Sin(dLon/2)
+	// Convert latitude and longitude from degrees to radians
+	dLat := (lat2 - lat1) * (math.Pi / 180.0)
+	dLon := (lon2 - lon1) * (math.Pi / 180.0)
 
+	// Convert latitudes to radians
+	lat1 = lat1 * (math.Pi / 180.0)
+	lat2 = lat2 * (math.Pi / 180.0)
+
+	// Haversine formula
+	a := math.Pow(math.Sin(dLat/2), 2) + math.Pow(math.Sin(dLon/2), 2)*math.Cos(lat1)*math.Cos(lat2)
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-	return R * c // Distance in km
-}
+	distance := earthRadius * c
 
-func findNearestStop(stops []Stop, userLat, userLon float64) Stop {
-	var nearest Stop
-	minDistance := math.MaxFloat64
-
-	for _, stop := range stops {
-		distance := haversine(userLat, userLon, stop.Lat, stop.Lon)
-		if distance < minDistance {
-			minDistance = distance
-			nearest = stop
-		}
-	}
-
-	return nearest
+	return distance
 }
 
 func main() {
@@ -114,16 +112,16 @@ func main() {
 
 	http.HandleFunc("/api/stops", func(w http.ResponseWriter, r *http.Request) {
 		region := r.URL.Query().Get("region")
-		rows, err := db.Query("SELECT DISTINCT ON (stop_name) stop_name FROM stops WHERE stop_area = $1", region)
+		rows, err := db.Query("SELECT DISTINCT ON (stop_name) stop_name, stop_area, stop_id FROM stops WHERE stop_area = $1", region)
 		if err != nil {
 			fmt.Println("Error querying stops:", err)
 			return
 		}
 		defer rows.Close()
-		var stops []string
+		var stops []Stop
 		for rows.Next() {
-			var stop string
-			err := rows.Scan(&stop)
+			var stop Stop
+			err := rows.Scan(&stop.Name, &stop.Area, &stop.ID)
 			if err != nil {
 				fmt.Println("Error scanning stops:", err)
 				return
@@ -146,33 +144,45 @@ func main() {
 	})
 
 	http.HandleFunc("/api/buses", func(w http.ResponseWriter, r *http.Request) {
-		stop := r.URL.Query().Get("stop")
+		stopName := r.URL.Query().Get("stop_name")
+		stopArea := r.URL.Query().Get("stop_area")
 
-		rows, err := db.Query("SELECT DISTINCT ON (r.route_short_name) r.route_id, r.route_short_name, t.trip_id, t.trip_long_name, st.arrival_time, st.departure_time, s.stop_lat, s.stop_lon FROM stops s JOIN stop_times st ON s.stop_id = st.stop_id JOIN trips t ON st.trip_id = t.trip_id JOIN routes r ON t.route_id = r.route_id WHERE s.stop_name = $1 ORDER BY r.route_short_name, st.arrival_time", stop)
+		query := `
+			SELECT r.route_id, r.route_short_name, r.route_long_name
+			FROM routes r
+			JOIN (
+				SELECT route_id
+				FROM (
+					SELECT t.route_id, array_length(array_agg(t.trip_id), 1) AS trip_count
+					FROM stops s
+					JOIN stop_times st ON s.stop_id = st.stop_id
+					JOIN trips t ON st.trip_id = t.trip_id
+					WHERE s.stop_name = $1 AND s.stop_area = $2
+					GROUP BY t.route_id, t.trip_id
+				) AS trip_counts
+				GROUP BY route_id
+			) AS max_trips ON r.route_id = max_trips.route_id
+		`
+		rows, err := db.Query(query, stopName, stopArea)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error querying buses: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Error querying routes: %v", err), http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
 
-		var trips []Trip
+		var routes []Route
 
 		for rows.Next() {
-			var trip Trip
-			err := rows.Scan(&trip.RouteID, &trip.RouteShortName, &trip.TripID, &trip.TripLongName, &trip.ArrivalTime, &trip.DepartureTime, &trip.Lat, &trip.Lon)
+			var route Route
+			err := rows.Scan(&route.RouteID, &route.RouteShortName, &route.RouteLongName)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error scanning row: %v", err), http.StatusInternalServerError)
 				return
 			}
-			trips = append(trips, trip)
+			routes = append(routes, route)
 		}
 
-		if err = rows.Err(); err != nil {
-			http.Error(w, fmt.Sprintf("Error iterating rows: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		jsonResponse, err := json.Marshal(trips)
+		jsonResponse, err := json.Marshal(routes)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error marshaling JSON: %v", err), http.StatusInternalServerError)
 			return
@@ -180,7 +190,6 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(jsonResponse)
-
 	})
 
 	http.HandleFunc("/stops", func(w http.ResponseWriter, r *http.Request) {
@@ -203,50 +212,81 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/api/arrivals", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/nearest_stop", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		routeID := query.Get("route_id")
 		userLatStr := query.Get("user_lat")
 		userLonStr := query.Get("user_lon")
 
-		userLat, err := strconv.ParseFloat(userLatStr, 64)
+		// Convert userLatStr and userLonStr to float64
+		userLat, _ := strconv.ParseFloat(userLatStr, 64)
+		userLon, _ := strconv.ParseFloat(userLonStr, 64)
+
+		// Query the database to get stops for the given route
+		rows, err := db.Query("SELECT trip_id, stop_id, stop_name, lat, lon FROM stops WHERE route_id = $1", routeID)
 		if err != nil {
-			http.Error(w, "Invalid user latitude", http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Error querying stops: %v", err), http.StatusInternalServerError)
 			return
 		}
+		defer rows.Close()
 
-		userLon, err := strconv.ParseFloat(userLonStr, 64)
-		if err != nil {
-			http.Error(w, "Invalid user longitude", http.StatusBadRequest)
-			return
+		var closestStop StopWithDistance
+		closestDistance := math.MaxFloat64
+
+		for rows.Next() {
+			var stop StopWithDistance
+			err := rows.Scan(&stop.TripID, &stop.ID, &stop.Name, &stop.Lat, &stop.Lon)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error scanning row: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			// Calculate distance using Haversine formula
+			distance := haversine(userLat, userLon, stop.Lat, stop.Lon)
+
+			if distance < closestDistance {
+				closestStop = stop
+				closestDistance = distance
+			}
 		}
 
-		rows, err := db.Query(`
-            SELECT DISTINCT s.stop_name, s.stop_id, s.stop_lat, s.stop_lon
-            FROM stops s
-            JOIN stop_times st ON s.stop_id = st.stop_id
-            JOIN trips t ON st.trip_id = t.trip_id
-            JOIN routes r ON t.route_id = r.route_id
-            WHERE r.route_id = $1`, routeID)
+		// Return the closest stop as JSON
+		jsonStop, err := json.Marshal(closestStop)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error marshaling JSON: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonStop)
+	})
+
+	http.HandleFunc("/api/schedule", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		tripID := query.Get("trip_id")
+		stopID := query.Get("stop_id")
+
+		stopTimes, err := db.Query(`
+            SELECT arrival_time, trip_id, stop_id
+            FROM stop_times
+            WHERE trip_id = $1 AND stop_id = $2`, tripID, stopID)
 
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Database query error: %s", err), http.StatusInternalServerError)
 			return
 		}
-		defer rows.Close()
+		defer stopTimes.Close()
 
-		var stops []Stop
-		for rows.Next() {
-			var stop Stop
-			if err := rows.Scan(&stop.Name, &stop.ID, &stop.Lat, &stop.Lon); err != nil {
-				http.Error(w, "Error reading stops data", http.StatusInternalServerError)
+		var stopTimesList []StopTime
+		for stopTimes.Next() {
+			var stopTime StopTime
+			if err := stopTimes.Scan(&stopTime.ArrivalTime, &stopTime.TripID, &stopTime.StopID); err != nil {
+				http.Error(w, "Error reading stop times data", http.StatusInternalServerError)
 				return
 			}
-			stops = append(stops, stop)
+			stopTimesList = append(stopTimesList, stopTime)
 		}
-		nearestStop := findNearestStop(stops, userLat, userLon)
-
-		json.NewEncoder(w).Encode(nearestStop)
+		json.NewEncoder(w).Encode(stopTimesList)
 	})
 
 	fmt.Println("Server listening on port 8080")
