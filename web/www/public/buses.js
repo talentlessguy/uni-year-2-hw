@@ -1,58 +1,54 @@
 const urlParams = new URLSearchParams(location.search)
 
-const res = await fetch(
-  `/api/buses?stop_name=${urlParams.get('name')}&stop_area=${
-    urlParams.get('region')
-  }`,
-)
-
-const json = await res.json()
-
 const grid = document.getElementById('grid')
 
-/**
- * @type {GeolocationCoordinates}
- */
-let coords = {}
+const date = new Date()
 
-navigator.geolocation.getCurrentPosition((pos) => {
-  coords = pos.coords
+const userTime = Intl.DateTimeFormat('et-EE', {
+  hour: '2-digit',
+  minute: '2-digit',
+}).format(date)
+
+document.getElementById('current_time').textContent += userTime
+
+grid.innerHTML = 'loading'
+
+navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+  const res = await fetch(
+    `/api/buses?stop_name=${urlParams.get('stop_name')}&stop_area=${
+      urlParams.get('stop_area')
+    }&user_lat=${coords.latitude}&user_lon=${coords.longitude}&user_time=${userTime}`,
+  )
+  const json = await res.json()
+
+  grid.innerHTML = ''
+
+  document.getElementById('desc').textContent =
+    `Closest stop: ${json.closest_stop.name}`
+
+  if (!json.buses) {
+    grid.innerHTML = 'No buses :('
+    return
+  }
+
+  for (const bus of json.buses) {
+    const div = document.createElement('div')
+    div.innerHTML =
+      `${bus.trip_long_name}<br />Bus code: ${bus.route_short_name}<br />Departure: ${bus.departure}`
+    div.classList.add(
+      'bg-white',
+      'text-black',
+      'border-solid',
+      'border-2',
+      'border-black',
+      'py-1',
+      'px-2',
+      'text-md',
+      'rounded',
+    )
+
+    grid.appendChild(div)
+  }
 }, (err) => {
   console.error(err)
 })
-
-for (const bus of json) {
-  const btn = document.createElement('button')
-  btn.textContent = `${bus.route_short_name} (${bus.route_long_name})`
-  btn.classList.add(
-    'bg-green-500',
-    'hover:bg-green-700',
-    'text-white',
-    'font-bold',
-    'py-1',
-    'px-2',
-    'text-sm',
-    'rounded',
-  )
-
-  btn.onclick = () => {
-    if (coords.latitude) {
-      fetch(
-        `/api/nearest_stop?user_lat=${coords.latitude}&user_lon=${coords.longitude}&route_id=${bus.route_id}`,
-      )
-        .then((res) => res.json()).then((json) => {
-          console.log(`Closest stop: `, json)
-
-          console.log(`Bus: `, bus)
-
-          // fetch(`/api/schedule?trip_id=${bus.trip_id}&stop_id=${json.id}`).then((
-          //   res,
-          // ) => res.json()).then((json) => {
-          //   console.log(json)
-          // })
-        })
-    }
-  }
-
-  grid.appendChild(btn)
-}
