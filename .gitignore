@@ -2,3 +2,4 @@
 .env
 out.css
 data/
+*.txt
