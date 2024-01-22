@@ -1,14 +1,10 @@
-# Read the stops.txt file
 $stops = Import-Csv -Path "stops.txt"
 
-# Prompt the user for the bus stop name and search radius
 $busStopName = Read-Host "Enter the name of the bus stop"
 $searchRadius = Read-Host "Enter the search radius in meters"
 
-# Filter the stops by the given bus stop name
 $filteredStops = $stops | Where-Object { $_.stop_name -eq $busStopName }
 
-# If there are multiple stops with the same name, prompt the user to choose one
 if ($filteredStops.Count -gt 1) {
     Write-Host "Multiple stops found with the name '$busStopName'. Please choose one:"
     $i = 1
@@ -23,7 +19,7 @@ else {
     $chosenStop = $filteredStops[0]
 }
 
-# Function to calculate the distance between two sets of latitude and longitude coordinates using the Haversine formula
+# Haversine
 function Get-Distance {
     param(
         [double]$lat1,
@@ -32,7 +28,7 @@ function Get-Distance {
         [double]$lon2
     )
 
-    $R = 6371e3  # Earth's radius in meters
+    $R = 6371e3
 
     $φ1 = $lat1 * [math]::PI / 180
     $φ2 = $lat2 * [math]::PI / 180
@@ -46,11 +42,9 @@ function Get-Distance {
     return $distance
 }
 
-# Calculate the distance between the chosen stop and other stops within the search radius
 $closestStops = $stops | Where-Object {
     $distance = Get-Distance $chosenStop.stop_lat $chosenStop.stop_lon $_.stop_lat $_.stop_lon
     $distance -le $searchRadius
 }
 
-# Display the closest stops
 $closestStops | Format-Table -Property stop_name, stop_area, stop_lat, stop_lon
