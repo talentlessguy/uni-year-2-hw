@@ -1,0 +1,40 @@
+$startTime = Read-Host "Enter start time (MM/dd/yyyy HH:mm:ss)"
+$endTime = Read-Host "Enter end time (MM/dd/yyyy HH:mm:ss)"
+$outputFile = Read-Host "Enter the full path for the output file (e.g., C:\Logs\Output.txt)"
+
+# Function to format and write log entries to the output file
+function Write-LogEntries($logEntries) {
+    $logEntries | ForEach-Object {
+        $id = $_.ID
+        $title = $_.Title
+        $events = $_.Events | Sort-Object TimeGenerated -Descending
+
+        Add-Content $outputFile "`n[$id] [$title]`n"
+
+        $events | ForEach-Object {
+            $time = $_.TimeGenerated.ToString("MM/dd/yyyy HH:mm:ss")
+            $text = $_.Message -replace "[`r`n]+", " " -replace "\s{2,}", " "
+            Add-Content $outputFile "[$time] [$text]`n"
+        }
+    }
+}
+
+# Get error and warning events from all available logs within the specified time range
+$events = Get-WinEvent -FilterHashtable @{
+    LogName = 'Application', 'System', 'Security'
+    Level = 2, 3   # 2: Warning, 3: Error
+    StartTime = [datetime]::ParseExact($startTime, 'MM/dd/yyyy HH:mm:ss', $null)
+    EndTime = [datetime]::ParseExact($endTime, 'MM/dd/yyyy HH:mm:ss', $null)
+} | Sort-Object Level, TimeGenerated -Descending
+
+
+# Group events by ID and Title
+$groupedEvents = $events | Group-Object -Property ID, TaskDisplayName
+
+# Sort groups by the number of events in each group
+$sortedGroups = $groupedEvents | Sort-Object Count -Descending
+
+# Write the formatted log entries to the output file
+Write-LogEntries $sortedGroups
+
+Write-Host "Log entries have been written to $outputFile"
